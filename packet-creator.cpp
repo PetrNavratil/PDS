@@ -42,47 +42,103 @@ void  PacketCreator::parse(u_char *args, const struct pcap_pkthdr *header,
 
     uint8_t *options = &(dhcph->options);
     uint8_t type;
+    packet_info p;
     while(*options != 0xff){
-        if(*options == OPTION_DHCP_TYPE){
-            options = options + 2; // skip length
-            type = *options;
-            break;
+        switch(*options){
+            case OPTION_DHCP_TYPE:
+                options = options + 2; // skip length
+                type = *options;
+                options = options + 1;
+                break;
+            case OPTION_DHCP_SERVER_IDENTIFIER:
+                options = options + 2; // skip length
+                memcpy(&(p.server_identifier), options, 4);
+                options = options + 4;
+                break;
+            default:
+                options = options +1;
+                options = options + (*options);
         }
-        options = options + 1;
-        options = options + (*options);
     }
-    packet_info *p = new packet_info;
     if(type == OPTION_DHCP_OFFER){
         cout << "OFFER " << endl;
-        memcpy(&(p->src_mac), &(dhcph->chaddr), 6);
-        memcpy(&(p->req_ip_address), &(dhcph->yiaddr), 4);
-        memset(&(p->dest_mac), 0xff, 6);
-        p->type = PACKET_REQUEST;
-        packet_creator->send_packet(p);
+        memcpy(&(p.src_mac), &(dhcph->chaddr), 6);
+        memcpy(&(p.req_ip_address), &(dhcph->yiaddr), 4);
+        memset(&(p.dest_mac), 0xff, 6);
+        p.type = PACKET_REQUEST;
+        packet_creator->send_packet(&p);
 
     } else {
         cout << "ACK " << endl;
-
     }
-
 }
 
-packet_info *PacketCreator::create_packet_info(uint8_t type){
-    packet_info *info = new packet_info;
-//    uint8_t fake[] = {0xdc, 0xa1, 0xb9, 0x45, 0x9e, 0x0d};
-    uint8_t *fake = generate_mac_address();
+void  PacketCreator::parse_server(u_char *args, const struct pcap_pkthdr *header,
+                           const u_char *packet) {
+    struct ether_header *eh = (struct ether_header *) packet;
+    struct iphdr *iph = (struct iphdr *) (packet + ETHER_HEADER_SHIFT);
+    struct udphdr *udph = (struct udphdr *) (packet + IP_HEADER_SHIFT);
+    struct dhcp_header *dhcph = (struct dhcp_header *) (packet + UDP_HEADER_SHIFT);
+    PacketCreator *packet_creator=reinterpret_cast<PacketCreator *>(args);
+
+    uint8_t *options = &(dhcph->options);
+    uint8_t type;
+    packet_info p;
+    while(*options != 0xff){
+        switch(*options){
+            case OPTION_DHCP_TYPE:
+                options = options + 2; // skip length
+                type = *options;
+                options = options + 1;
+                break;
+            case OPTION_DHCP_SERVER_IDENTIFIER:
+                options = options + 2; // skip length
+                memcpy(&(p.server_identifier), options, 4);
+                options = options + 4;
+                break;
+            case OPTION_DHCP_REQUEST_IP:
+                options = options +2;
+                memcpy(&p.req_ip_address, options, 4);
+                options = options + 4;
+            default:
+                options = options +1;
+                options = options + (*options);
+        }
+    }
+    if(type == OPTION_DHCP_DISCOVER){
+//        cout << "DISCOVER " << PACKET_DISCOVER  << endl;
+        memcpy(&(p.src_mac), &(dhcph->chaddr), 6);
+        p.type = PACKET_DISCOVER;
+        packet_creator->requests_lock.lock();
+        packet_creator->requests.push(p);
+        packet_creator->requests_lock.unlock();
+    } else if(type == OPTION_DHCP_REQUEST){
+//        cout << "REQUEST " << endl;
+        memcpy(&(p.src_mac), &(dhcph->chaddr), 6);
+        p.type = PACKET_REQUEST;
+        packet_creator->requests_lock.lock();
+        packet_creator->requests.push(p);
+        packet_creator->requests_lock.unlock();
+
+    }
+}
+
+packet_info PacketCreator::create_packet_info(uint8_t type){
+    packet_info info;
+    vector<uint8_t> fake = generate_mac_address();
     switch(type){
         case PACKET_DISCOVER:
-            memset(&(info->dest_mac), 0xff, 6);
-            memcpy(&(info->src_mac), fake, 6);
+            memset(&(info.dest_mac), 0xff, 6);
+            memcpy(&(info.src_mac), &fake[0], 6);
             break;
     }
-    info->type = type;
+    info.type = type;
     return info;
 }
 
 pds_packet *PacketCreator::create_packet(packet_info *info){
     uint8_t *buffer = new uint8_t[PACKET_BUFFER_SIZE];
+    vector<uint8_t> tmp(10);
     struct ether_header *eth_header = (struct ether_header *) buffer;
     struct iphdr *ip_header = (struct iphdr *) (buffer + ETHER_HEADER_SHIFT);
     struct udphdr *udp_header = (struct udphdr *) (buffer + IP_HEADER_SHIFT);
@@ -134,7 +190,82 @@ pds_packet *PacketCreator::create_packet(packet_info *info){
             dhcp_headerr->xid = 0x00;
             dhcp_headerr->flags = htons(0x8000);
             dhcpOptions = insert_option(dhcpOptions, &dhcp_size, OPTION_DHCP_TYPE, 1, create_option_array(OPTION_DHCP_REQUEST));
+            dhcpOptions = insert_option(dhcpOptions, &dhcp_size, OPTION_DHCP_SERVER_IDENTIFIER, 4, info->server_identifier);
             dhcpOptions = insert_option(dhcpOptions, &dhcp_size, OPTION_DHCP_REQUEST_IP, 4, info->req_ip_address);
+            dhcpOptions = insert_option(dhcpOptions, &dhcp_size, OPTION_END, 0, NULL);
+            break;
+        case PACKET_OFFER:
+//            memcpy(&(eth_header->ether_dhost), &(info->dest_mac), 6);
+            memset(&(eth_header->ether_dhost), 0xff, 6);
+            memcpy(&(eth_header->ether_shost), &(info->src_mac), 6);
+            memcpy(&(dhcp_headerr->chaddr), &(info->dest_mac), 6);
+            memcpy(&(ip_header->saddr), &(info->server_identifier), 4);
+//            ip_header->daddr = info->ip_address;
+            ip_header->daddr = 0xffffffff;
+            udp_header->source = htons(67);
+            udp_header->dest = htons(68);
+            dhcp_headerr->op = 0x02;
+            dhcp_headerr->htype = 0x01;
+            dhcp_headerr->hlen = 0x06;
+            dhcp_headerr->hops = 0x00;
+            dhcp_headerr->xid = 0x00;
+            dhcp_headerr->flags = htons(0x8000);
+            memcpy(&(dhcp_headerr->yiaddr), &(info->ip_address), 4);
+
+            dhcpOptions = insert_option(dhcpOptions, &dhcp_size, OPTION_DHCP_TYPE, 1, create_option_array(OPTION_DHCP_OFFER));
+            dhcpOptions = insert_option(dhcpOptions, &dhcp_size, OPTION_DHCP_SERVER_IDENTIFIER, 4, info->server_identifier);
+            dhcpOptions = insert_option(dhcpOptions, &dhcp_size, OPTION_LEASE_TIME, 4, info->lease_time);
+            dhcpOptions = insert_option(dhcpOptions, &dhcp_size, OPTIONS_GATEWAY, 4, info->gateway);
+            dhcpOptions = insert_option(dhcpOptions, &dhcp_size, OPTIONS_DNS, 4, info->dns_address);
+            dhcpOptions = insert_option(dhcpOptions, &dhcp_size, OPTIONS_DOMAIN, info->domain_length, info->domain);
+            dhcpOptions = insert_option(dhcpOptions, &dhcp_size, OPTION_END, 0, NULL);
+            break;
+
+        case PACKET_ACK:
+            //       memcpy(&(eth_header->ether_dhost), &(info->dest_mac), 6);
+            memset(&(eth_header->ether_dhost), 0xff, 6);
+            memcpy(&(eth_header->ether_shost), &(info->src_mac), 6);
+            memcpy(&(dhcp_headerr->chaddr), &(info->dest_mac), 6);
+            memcpy(&(ip_header->saddr), &(info->server_identifier), 4);
+//            ip_header->daddr = info->ip_address;
+            ip_header->daddr = 0xffffffff;
+            udp_header->source = htons(67);
+            udp_header->dest = htons(68);
+            dhcp_headerr->op = 0x02;
+            dhcp_headerr->htype = 0x01;
+            dhcp_headerr->hlen = 0x06;
+            dhcp_headerr->hops = 0x00;
+            dhcp_headerr->xid = 0x00;
+            dhcp_headerr->flags = htons(0x8000);
+            memcpy(&(dhcp_headerr->yiaddr), &(info->ip_address), 4);
+
+            dhcpOptions = insert_option(dhcpOptions, &dhcp_size, OPTION_DHCP_TYPE, 1, create_option_array(OPTION_DHCP_ACK));
+            dhcpOptions = insert_option(dhcpOptions, &dhcp_size, OPTION_DHCP_SERVER_IDENTIFIER, 4, info->server_identifier);
+            dhcpOptions = insert_option(dhcpOptions, &dhcp_size, OPTION_LEASE_TIME, 4, info->lease_time);
+            dhcpOptions = insert_option(dhcpOptions, &dhcp_size, OPTIONS_GATEWAY, 4, info->gateway);
+            dhcpOptions = insert_option(dhcpOptions, &dhcp_size, OPTIONS_DNS, 4, info->dns_address);
+            dhcpOptions = insert_option(dhcpOptions, &dhcp_size, OPTIONS_DOMAIN, info->domain_length, info->domain);
+            dhcpOptions = insert_option(dhcpOptions, &dhcp_size, OPTION_END, 0, NULL);
+            break;
+        case PACKET_NACK:
+            //       memcpy(&(eth_header->ether_dhost), &(info->dest_mac), 6);
+            memset(&(eth_header->ether_dhost), 0xff, 6);
+            memcpy(&(eth_header->ether_shost), &(info->src_mac), 6);
+            memcpy(&(dhcp_headerr->chaddr), &(info->dest_mac), 6);
+            memcpy(&(ip_header->saddr), &(info->server_identifier), 4);
+//            ip_header->daddr = info->ip_address;
+            ip_header->daddr = 0xffffffff;
+            udp_header->source = htons(67);
+            udp_header->dest = htons(68);
+            dhcp_headerr->op = 0x02;
+            dhcp_headerr->htype = 0x01;
+            dhcp_headerr->hlen = 0x06;
+            dhcp_headerr->hops = 0x00;
+            dhcp_headerr->xid = 0x00;
+            dhcp_headerr->flags = htons(0x8000);
+
+            dhcpOptions = insert_option(dhcpOptions, &dhcp_size, OPTION_DHCP_TYPE, 1, create_option_array(OPTION_DHCP_ACK));
+            dhcpOptions = insert_option(dhcpOptions, &dhcp_size, OPTION_DHCP_SERVER_IDENTIFIER, 4, info->server_identifier);
             dhcpOptions = insert_option(dhcpOptions, &dhcp_size, OPTION_END, 0, NULL);
             break;
     }
@@ -166,10 +297,15 @@ uint8_t * PacketCreator::insert_option_data(uint8_t *options, int *size, uint8_t
 
 PacketCreator::PacketCreator(pcap_t *pcap_handle) {
     handle = pcap_handle;
+    requests_lock.unlock();
 }
 
 void PacketCreator::packet_parser() {
     pcap_loop(handle, -1, parse, reinterpret_cast<u_char*>(this));
+}
+
+void PacketCreator::server_listener() {
+    pcap_loop(handle, -1, parse_server, reinterpret_cast<u_char*>(this));
 }
 
 void PacketCreator::send_packet(packet_info *info) {
@@ -177,14 +313,69 @@ void PacketCreator::send_packet(packet_info *info) {
     int result = pcap_inject(handle, pp->buffer, pp->size);
 }
 
-uint8_t *PacketCreator::generate_mac_address(){
+vector<uint8_t> PacketCreator::generate_mac_address(){
     srand (time(NULL));
-    uint8_t *mac_address = new uint8_t[6];
+    vector<uint8_t> mac_address(6);
     mac_address[0] = 0xdc;
     for(int i = 1; i < 6; i++){
         mac_address[i] =  rand() % 256;
     }
     return mac_address;
+}
+
+void PacketCreator::server_responder(AddressManager *addressManager) {
+    packet_info packet_inf;
+    packet_info packet_response;
+    uint32_t device_ip = addressManager->assign_device_ip();
+    vector<uint8_t> device_mac_address = generate_mac_address();
+    uint32_t lease_time_converted = htonl(info.lease_time);
+    bool result;
+    while(true){
+        requests_lock.lock();
+        if(requests.size() > 0){
+            packet_inf = requests.front();
+            requests.pop();
+            requests_lock.unlock();
+            if(packet_inf.type == PACKET_DISCOVER){
+                packet_response.type = PACKET_OFFER;
+                packet_response.ip_address = addressManager->assign_new_ip_address(&(packet_inf.src_mac[0]), &result);
+                if(!result){
+                    // OUT OF IP ADRESSES
+                    continue;
+                }
+                memcpy(&(packet_response.dest_mac), &packet_inf.src_mac[0], 6);
+                memcpy(&(packet_response.src_mac), &device_mac_address[0], 6);
+                memcpy(&(packet_response.lease_time), &lease_time_converted, 4);
+                memcpy(&(packet_response.dns_address), &(info.dns_address), 4);
+                memcpy(&(packet_response.gateway), &(info.gateway), 4);
+                packet_response.domain = info.domain;
+                packet_response.domain_length = info.domain_length;
+                memcpy(&(packet_response.server_identifier), &device_ip, 4);
+                send_packet(&packet_response);
+            } else {
+                bool result = addressManager->assign_requested_ip_address(&(packet_inf.src_mac[0]), &(packet_inf.req_ip_address[0]));
+                packet_response.type = result ? PACKET_ACK : PACKET_NACK;
+                if(result){
+                    memcpy(&(packet_response.dest_mac), &packet_inf.src_mac[0], 6);
+                    memcpy(&(packet_response.src_mac), &device_mac_address[0], 6);
+                    memcpy(&(packet_response.lease_time), &lease_time_converted, 4);
+                    memcpy(&(packet_response.dns_address), &(info.dns_address), 4);
+                    memcpy(&(packet_response.gateway), &(info.gateway), 4);
+                    packet_response.domain = info.domain;
+                    packet_response.domain_length = info.domain_length;
+                    memcpy(&(packet_response.server_identifier), &device_ip, 4);
+                }
+                send_packet(&packet_response);
+            }
+        } else {
+            requests_lock.unlock();
+        }
+//        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
+}
+
+void PacketCreator::set_server_info(server_info info) {
+    this->info = info;
 }
 
 

@@ -9,30 +9,18 @@
 #include <cstring>
 #include <pcap.h>
 #include <cstdlib>
-#include <vector>
-#include "address_manager.h"
-#include <mutex>
-#include <thread>
-#include <queue>
 
-#define PACKET_DISCOVER 0x01
-#define PACKET_OFFER 0x02
-#define PACKET_REQUEST 0x03
-#define PACKET_ACK 0x04
-#define PACKET_NACK 0x05
+#define PACKET_DISCOVER 1
+#define PACKET_OFFER 2
+#define PACKET_REQUEST 3
+#define PACKET_ACK 4
 #define PACKET_BUFFER_SIZE 1024
 
 #define OPTION_END 0xff
 #define OPTION_DHCP_TYPE 0x35
-#define OPTION_DHCP_SERVER_IDENTIFIER 0x36
-#define OPTION_LEASE_TIME 0x33
-#define OPTIONS_DNS 0x06
-#define OPTIONS_DOMAIN 0x0f
-#define OPTIONS_GATEWAY 0x03
 #define OPTION_DHCP_DISCOVER 0x01
 #define OPTION_DHCP_OFFER 0x02
 #define OPTION_DHCP_REQUEST 0x03
-#define OPTION_DHCP_ACK 0x05
 #define OPTION_DHCP_REQUEST_IP 0x32
 
 #define ETHER_HEADER_SHIFT sizeof(struct ether_header)
@@ -64,54 +52,33 @@ struct pds_packet{
     int size;
 };
 
+
 struct packet_info{
     uint8_t type;
     uint8_t dest_mac[6];
     uint8_t src_mac[6];
-    uint8_t req_ip_address[4];
-    uint8_t server_identifier[4];
-    uint32_t ip_address;
-    uint8_t dns_address[4];
-    uint8_t gateway[4];
-    uint8_t *domain;
-    uint8_t domain_length;
-    uint8_t lease_time[4];
+    uint8_t req_ip_address[6];
+    uint8_t op;
 };
 using namespace std;
-
-struct server_info{
-    uint32_t ip_address;
-    uint32_t dns_address;
-    uint32_t gateway;
-    uint8_t *domain;
-    uint8_t domain_length;
-    uint32_t lease_time;
-};
 
 class PacketCreator{
 private:
     pcap_t *handle;
-    server_info info;
     uint8_t* insert_option(uint8_t* options, int *size, uint8_t type, uint8_t length, uint8_t *data);
     uint8_t * insert_option_data(uint8_t* options, int *size, uint8_t value);
     uint8_t * create_option_array(uint8_t type);
     unsigned short in_cksum(unsigned short *addr, int len);
-    vector<uint8_t> generate_mac_address();
+    uint8_t *generate_mac_address();
 
 public:
     void static parse(u_char *args, const struct pcap_pkthdr *header,
                const u_char *packet);
-    void static parse_server(u_char *args, const struct pcap_pkthdr *header,
-                      const u_char *packet);
     pds_packet *create_packet(packet_info *info);
-    packet_info create_packet_info(uint8_t type);
+    packet_info *create_packet_info(uint8_t type);
     PacketCreator(pcap_t *pcap_handle);
     void packet_parser();
-    void server_listener();
     void send_packet(packet_info *info);
-    mutex requests_lock;
-    queue<packet_info> requests;
-    void server_responder(AddressManager *addressManager);
-    void set_server_info(server_info info);
+
 };
 #endif //PDS_PACKET_CREATOR_H

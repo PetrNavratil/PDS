@@ -94,9 +94,9 @@ int main(int argc, char* argv[]) {
     PacketCreator p(pcap_handle);
     thread tmp(&PacketCreator::packet_parser, &p);
     while(true){
-        packet_info info = p.create_packet_info(PACKET_DISCOVER);
-        p.send_packet(&info);
-        std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+        packet_info *info = p.create_packet_info(PACKET_DISCOVER);
+        p.send_packet(info);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
 
 
