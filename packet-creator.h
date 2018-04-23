@@ -33,7 +33,10 @@
 #define OPTION_DHCP_OFFER 0x02
 #define OPTION_DHCP_REQUEST 0x03
 #define OPTION_DHCP_ACK 0x05
+#define OPTION_DHCP_NACK 0x06
 #define OPTION_DHCP_REQUEST_IP 0x32
+
+#define DHCP_FLAGS_BROADCAST 0x8000
 
 #define ETHER_HEADER_SHIFT sizeof(struct ether_header)
 #define IP_HEADER_SHIFT sizeof(struct iphdr) + sizeof(struct ether_header)
@@ -45,7 +48,7 @@ struct dhcp_header {
     uint8_t htype;
     uint8_t hlen;
     uint8_t hops;
-    uint32_t xid;
+    uint8_t xid[4];
     uint16_t secs;
     uint16_t flags;
     uint32_t ciaddr;
@@ -76,6 +79,8 @@ struct packet_info{
     uint8_t *domain;
     uint8_t domain_length;
     uint8_t lease_time[4];
+    uint8_t xid[4];
+    uint16_t flags;
 };
 using namespace std;
 

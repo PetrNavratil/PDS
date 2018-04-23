@@ -114,22 +114,21 @@ void AddressManager::cleaner() {
     while(true){
         addresses_lock.lock();
         now = chrono::system_clock::now();
-        vector<dhcp_address>::iterator invalid_address;
-        invalid_address = find_if(used_addresses.begin(), used_addresses.end(),
-                                [now](const dhcp_address &m) -> bool {return m.valid_to <= now;});
-        for(vector<dhcp_address>::iterator index = invalid_address; index != used_addresses.end(); index++){
-            dhcp_address address;
-                            struct in_addr addr;
-                addr.s_addr = index->ip;
-            address.ip = index->ip;
-                            cout << "Clearing " << inet_ntoa(addr) << endl;
-            available_addresses.push_back(address);
-        }
-        if(invalid_address != used_addresses.end()){
-            used_addresses.erase(invalid_address);
-        }
+        used_addresses.erase(remove_if(used_addresses.begin(),
+                                  used_addresses.end(),
+                                  [&, now](const dhcp_address &m){
+            if(m.valid_to <= now){
+                dhcp_address address;
+                struct in_addr addr;
+                addr.s_addr = m.ip;
+                address.ip = m.ip;
+                cout << "Clearing " << inet_ntoa(addr) << endl;
+                this->available_addresses.push_back(address);
+                return true;
+            }
+            return false;
+        }), used_addresses.end());
         cout << "SIZES " << available_addresses.size() << " " << used_addresses.size() << endl;
-        cout << "CLEANING PERFORMED " << used_addresses.size() << endl;
         addresses_lock.unlock();
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
