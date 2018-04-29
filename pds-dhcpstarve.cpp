@@ -12,7 +12,7 @@
 #include <netinet/udp.h>
 #include <linux/if_packet.h>
 #include <pcap.h>
-#include "packet-creator.h"
+#include "packet-manager.h"
 #include <thread>
 #include <chrono>
 using namespace std;
@@ -28,7 +28,6 @@ int main(int argc, char* argv[]) {
     string interface = "";
     opterr = 0;
     char c;
-    struct ifreq ifmac;
 
     while((c = getopt(argc, argv, ":i:")) != -1){
         switch(c){
@@ -47,19 +46,6 @@ int main(int argc, char* argv[]) {
         cout << "Parameter -i interface has to be provided" << endl;
         return EXIT_FAILURE;
     }
-
-    int sockedFd;
-    if((sockedFd = socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW)) == -1){
-        cout << "ERROR" << endl;
-    }
-    memset(&ifmac, 0, sizeof(ifmac));
-    strcpy(ifmac.ifr_name, interface.c_str());
-    if(ioctl(sockedFd, SIOCGIFHWADDR, &ifmac) < 0){
-        return 1;
-    }
-////        eh -> ether_shost[i] = ((uint8_t *)&ifmac.ifr_hwaddr.sa_data)[i];
-
-
 
     char errbuf[PCAP_ERRBUF_SIZE];
     pcap_handle = pcap_open_live(interface.c_str(), BUFSIZ, 1, 0, errbuf);
@@ -94,19 +80,10 @@ int main(int argc, char* argv[]) {
     PacketManager p(pcap_handle);
     thread tmp(&PacketManager::packet_parser, &p);
     while(true){
-        packet_info *info = p.create_packet_info(PACKET_DISCOVER);
-        p.send_packet(info);
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        packet_info info = p.create_packet_info(PACKET_DISCOVER);
+        p.send_packet(&info);
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
     }
-
-
-
-//    pcap_loop(pcap_handle, 1, p.parse, NULL);
-
-    /* Print its length */
-    printf("Jacked a packet with length of [%d]\n", header.len);
-    tmp.join();
-    return 0;
 }
 
 

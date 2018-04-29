@@ -1,0 +1,13 @@
+CC=g++
+CPPFLAGS=-std=c++11 -Wall -Wextra
+
+all:pds-dhcpstarve 
+pds-dhcpstarve: pds-dhcpstarve.cpp
+	$(CC) $(CPPFLAGS) pds-dhcpstarve.cpp packet-creator.cpp address_manager.cpp -o pds-dhcpstarve -lpcap -pthread
+
+pds-dhcprogue: pds-dhcprogue.cpp
+	$(CC) $(CPPFLAGS) pds-dhcprogue.cpp packet-creator.cpp address_manager.cpp -o pds-dhcprogue -lpcap -pthread
+
+clean:
+	rm -f pds-dhcpstarve pds-dhcprogue
+

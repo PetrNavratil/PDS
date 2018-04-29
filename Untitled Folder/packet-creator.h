@@ -62,7 +62,7 @@ struct packet_info{
 };
 using namespace std;
 
-class PacketCreator{
+class PacketManager{
 private:
     pcap_t *handle;
     uint8_t* insert_option(uint8_t* options, int *size, uint8_t type, uint8_t length, uint8_t *data);
@@ -76,7 +76,7 @@ public:
                const u_char *packet);
     pds_packet *create_packet(packet_info *info);
     packet_info *create_packet_info(uint8_t type);
-    PacketCreator(pcap_t *pcap_handle);
+    PacketManager(pcap_t *pcap_handle);
     void packet_parser();
     void send_packet(packet_info *info);
 

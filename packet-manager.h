@@ -93,7 +93,7 @@ struct server_info{
     uint32_t lease_time;
 };
 
-class PacketCreator{
+class PacketManager{
 private:
     pcap_t *handle;
     server_info info;
@@ -110,7 +110,7 @@ public:
                       const u_char *packet);
     pds_packet *create_packet(packet_info *info);
     packet_info create_packet_info(uint8_t type);
-    PacketCreator(pcap_t *pcap_handle);
+    PacketManager(pcap_t *pcap_handle);
     void packet_parser();
     void server_listener();
     void send_packet(packet_info *info);

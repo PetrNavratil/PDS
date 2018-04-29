@@ -1,7 +1,7 @@
 #include "packet-creator.h"
 
 unsigned short
-PacketCreator::in_cksum(unsigned short *addr, int len) {
+PacketManager::in_cksum(unsigned short *addr, int len) {
     register int sum = 0;
     u_short answer = 0;
     register u_short *w = addr;
@@ -27,18 +27,18 @@ PacketCreator::in_cksum(unsigned short *addr, int len) {
     return (answer);
 }
 
-uint8_t* PacketCreator::create_option_array(uint8_t value){
+uint8_t* PacketManager::create_option_array(uint8_t value){
     uint8_t *tmp = new uint8_t[1]{value};
     return tmp;
 }
 
-void  PacketCreator::parse(u_char *args, const struct pcap_pkthdr *header,
+void  PacketManager::parse(u_char *args, const struct pcap_pkthdr *header,
            const u_char *packet) {
     struct ether_header *eh = (struct ether_header *) packet;
     struct iphdr *iph = (struct iphdr *) (packet + ETHER_HEADER_SHIFT);
     struct udphdr *udph = (struct udphdr *) (packet + IP_HEADER_SHIFT);
     struct dhcp_header *dhcph = (struct dhcp_header *) (packet + UDP_HEADER_SHIFT);
-    PacketCreator *packet_creator=reinterpret_cast<PacketCreator *>(args);
+    PacketManager *packet_creator=reinterpret_cast<PacketManager *>(args);
 
     uint8_t *options = &(dhcph->options);
     uint8_t type;
@@ -67,7 +67,7 @@ void  PacketCreator::parse(u_char *args, const struct pcap_pkthdr *header,
 
 }
 
-packet_info *PacketCreator::create_packet_info(uint8_t type){
+packet_info *PacketManager::create_packet_info(uint8_t type){
     packet_info *info = new packet_info;
 //    uint8_t fake[] = {0xdc, 0xa1, 0xb9, 0x45, 0x9e, 0x0d};
     uint8_t *fake = generate_mac_address();
@@ -81,7 +81,7 @@ packet_info *PacketCreator::create_packet_info(uint8_t type){
     return info;
 }
 
-pds_packet *PacketCreator::create_packet(packet_info *info){
+pds_packet *PacketManager::create_packet(packet_info *info){
     uint8_t *buffer = new uint8_t[PACKET_BUFFER_SIZE];
     struct ether_header *eth_header = (struct ether_header *) buffer;
     struct iphdr *ip_header = (struct iphdr *) (buffer + ETHER_HEADER_SHIFT);
@@ -146,7 +146,7 @@ pds_packet *PacketCreator::create_packet(packet_info *info){
     return final_packet;
 }
 
-uint8_t *PacketCreator::insert_option(uint8_t* options, int *size, uint8_t type, uint8_t length, uint8_t *data){
+uint8_t *PacketManager::insert_option(uint8_t* options, int *size, uint8_t type, uint8_t length, uint8_t *data){
     uint8_t *tmp_options = options;
     tmp_options = insert_option_data(tmp_options, size, type);
     if(length > 0){
@@ -158,26 +158,26 @@ uint8_t *PacketCreator::insert_option(uint8_t* options, int *size, uint8_t type,
     return tmp_options;
 }
 
-uint8_t * PacketCreator::insert_option_data(uint8_t *options, int *size, uint8_t value) {
+uint8_t * PacketManager::insert_option_data(uint8_t *options, int *size, uint8_t value) {
     *options = value;
     *size = (*size) + 1;
     return options + 1;
 }
 
-PacketCreator::PacketCreator(pcap_t *pcap_handle) {
+PacketManager::PacketManager(pcap_t *pcap_handle) {
     handle = pcap_handle;
 }
 
-void PacketCreator::packet_parser() {
+void PacketManager::packet_parser() {
     pcap_loop(handle, -1, parse, reinterpret_cast<u_char*>(this));
 }
 
-void PacketCreator::send_packet(packet_info *info) {
+void PacketManager::send_packet(packet_info *info) {
     pds_packet *pp = create_packet(info);
     int result = pcap_inject(handle, pp->buffer, pp->size);
 }
 
-uint8_t *PacketCreator::generate_mac_address(){
+uint8_t *PacketManager::generate_mac_address(){
     srand (time(NULL));
     uint8_t *mac_address = new uint8_t[6];
     mac_address[0] = 0xdc;

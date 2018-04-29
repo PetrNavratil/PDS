@@ -61,12 +61,12 @@ bool AddressManager::assign_requested_ip_address(uint8_t *mac_address, uint8_t *
         [converted_ip_address](const dhcp_address &m) -> bool {return m.ip == converted_ip_address;});
     if(found_address != used_addresses.end()){
         if(compare_mac_addresses(found_address->mac_address, mac_address)){
-            cout << "CAN PROLONG" << endl;
+//            cout << "CAN PROLONG" << endl;
             found_address->valid_to = chrono::system_clock::now() + chrono::seconds(lease_time);
             addresses_lock.unlock();
             return true;
         } else{
-            cout << "CANNOT ASSIGN, USED BY SOMEONE ELSE" << endl;
+//            cout << "CANNOT ASSIGN, USED BY SOMEONE ELSE" << endl;
             addresses_lock.unlock();
             return false;
         }
@@ -74,7 +74,7 @@ bool AddressManager::assign_requested_ip_address(uint8_t *mac_address, uint8_t *
         found_address = find_if(available_addresses.begin(), available_addresses.end(),
                                 [converted_ip_address](const dhcp_address &m) -> bool {return m.ip == converted_ip_address;});
         if(found_address != available_addresses.end()){
-            cout << "FOUND IN AVAILABLE" << endl;
+//            cout << "FOUND IN AVAILABLE" << endl;
             addr.ip = found_address->ip;
             memcpy(&(addr.mac_address), mac_address, 6);
             addr.valid_to = chrono::system_clock::now() + chrono::milliseconds(lease_time);
@@ -83,7 +83,7 @@ bool AddressManager::assign_requested_ip_address(uint8_t *mac_address, uint8_t *
             addresses_lock.unlock();
             return true;
         } else {
-            cout << "OUT OF RANGE" << endl;
+//            cout << "OUT OF RANGE" << endl;
             addresses_lock.unlock();
             return false;
         }
@@ -122,13 +122,11 @@ void AddressManager::cleaner() {
                 struct in_addr addr;
                 addr.s_addr = m.ip;
                 address.ip = m.ip;
-                cout << "Clearing " << inet_ntoa(addr) << endl;
                 this->available_addresses.push_back(address);
                 return true;
             }
             return false;
         }), used_addresses.end());
-        cout << "SIZES " << available_addresses.size() << " " << used_addresses.size() << endl;
         addresses_lock.unlock();
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
